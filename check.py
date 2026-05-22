@@ -22,7 +22,7 @@ DISPLAY_NAME = "Magnificent Monsters"
 
 # Monitor-chan's Persona Settings
 BOT_NAME = "Monitor-chan 🌸"
-BOT_AVATAR = "https://i.pinimg.com/originals/a4/0f/58/a40f589cda683eab5dc422d3d0f0d2c6.png" # Cute anime girl placeholder
+BOT_AVATAR = "https://i.pinimg.com/originals/a4/0f/58/a40f589cda683eab5dc422d3d0f0d2c6.png"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s")
 log = logging.getLogger(__name__)

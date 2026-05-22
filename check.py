@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Magnificent Monsters Monitor - Precision Radar
-Reports exact statuses, tiered scalper evaluations, and direct page targeting.
+Magnificent Monsters Monitor - Anime Girl Edition (Monitor-chan 🌸)
+Reports exact statuses with a cute, weeb-friendly aesthetic.
 """
 
 import os
@@ -20,11 +20,15 @@ PAGE_SETTLE_MS = 3000
 KEYWORD = "magnificent monsters"
 DISPLAY_NAME = "Magnificent Monsters"
 
+# Monitor-chan's Persona Settings
+BOT_NAME = "Monitor-chan 🌸"
+BOT_AVATAR = "https://i.pinimg.com/originals/a4/0f/58/a40f589cda683eab5dc422d3d0f0d2c6.png" # Cute anime girl placeholder
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s")
 log = logging.getLogger(__name__)
 
 def evaluate_price(name, price_str):
-    """Evaluates if the item is priced fairly or scalped based on actual MSRPs."""
+    """Evaluates the item price with an anime-themed markup system."""
     if not price_str or price_str == "N/A" or "See Link" in price_str: 
         return ""
         
@@ -32,25 +36,23 @@ def evaluate_price(name, price_str):
         val = float(re.sub(r'[^\d.]', '', price_str))
         name_lower = name.lower()
 
-        # Accurate Magnificent Monsters MSRPs
         if "display" in name_lower or "10x" in name_lower or "case" in name_lower:
-            msrp = 350.0  # 10 tuckboxes
+            msrp = 350.0  
         elif "pack" in name_lower:
-            msrp = 12.0   # roughly ~$11.66 per pack based on retail box price
+            msrp = 12.0   
         elif "box" in name_lower or "booster" in name_lower:
-            msrp = 35.0   # 1 tuckbox (3 packs)
+            msrp = 35.0   
         else:
             return ""
 
-        # Nuanced Tiered Markup System
         if val <= msrp * 0.95:
-            return " 📉 (Below MSRP!)"
+            return " 📉 (KYAA! Super Cheap, Senpai! ✨)"
         elif val <= msrp * 1.15:
-            return " ✅ (Fair/Retail Price)"
+            return " ✅ (Fair Price~! 🌸)"
         elif val <= msrp * 2.00:
-            return " ⚠️ (High Market Price)"
+            return " ⚠️ (Yabai! High Price! 💦)"
         else:
-            return " 🛑 (Extreme Scalper)"
+            return " 🛑 (Baka Scalper! 😡)"
     except Exception:
         return ""
 
@@ -61,7 +63,7 @@ def check_playwright_sites():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         
-        # --- 1. TCGPlayer (Search Page) ---
+        # --- 1. TCGPlayer ---
         tcg_url = "https://www.tcgplayer.com/search/yugioh/magnificent-monsters?productLineName=yugioh&setName=magnificent-monsters&page=1&view=grid"
         page = browser.new_page()
         Stealth().apply_stealth_sync(page)
@@ -71,7 +73,7 @@ def check_playwright_sites():
             
             title = page.title().lower()
             if "just a moment" in title or "access denied" in title or "security" in title:
-                listings.append({"site": "TCGplayer", "name": DISPLAY_NAME, "price": "N/A", "url": tcg_url, "status": "⛔ Blocked by Site Security (DataDome)", "color": 0x95A5A6})
+                listings.append({"site": "TCGplayer", "name": DISPLAY_NAME, "price": "N/A", "url": tcg_url, "status": "⛔ Blocked by Baka Security Guards! 😤", "color": 0x95A5A6})
             else:
                 try:
                     page.wait_for_selector(".search-result, .search-result__item", timeout=10000)
@@ -79,7 +81,7 @@ def check_playwright_sites():
                     cards = page.query_selector_all(".search-result, .search-result__item")
                     
                     if not cards:
-                        listings.append({"site": "TCGplayer", "name": DISPLAY_NAME, "price": "N/A", "url": tcg_url, "status": "❌ No data found / Out of Stock", "color": 0xE74C3C})
+                        listings.append({"site": "TCGplayer", "name": DISPLAY_NAME, "price": "N/A", "url": tcg_url, "status": "❌ Out of Stock (Sadge... 🥺)", "color": 0xE74C3C})
                     else:
                         for card in cards[:3]:
                             inner_text = card.inner_text()
@@ -88,15 +90,15 @@ def check_playwright_sites():
                             price = price_match.group(0) if price_match else "N/A"
                             
                             display_price = f"{price}{evaluate_price(name, price)}"
-                            listings.append({"site": "TCGplayer", "name": name, "price": display_price, "url": tcg_url, "status": "✅ IN STOCK", "color": 0x3498DB})
+                            listings.append({"site": "TCGplayer", "name": name, "price": display_price, "url": tcg_url, "status": "✅ IN STOCK! (Gotta go fast! 💨)", "color": 0x3498DB})
                 except Exception:
-                    listings.append({"site": "TCGplayer", "name": DISPLAY_NAME, "price": "N/A", "url": tcg_url, "status": "❌ No data found (Empty Search)", "color": 0x95A5A6})
+                    listings.append({"site": "TCGplayer", "name": DISPLAY_NAME, "price": "N/A", "url": tcg_url, "status": "❌ No data found (Gomenasai... 🙇‍♀️)", "color": 0x95A5A6})
         except Exception as e:
-            listings.append({"site": "TCGplayer", "name": DISPLAY_NAME, "price": "N/A", "url": tcg_url, "status": "Site Error: Unreachable", "color": 0x95A5A6})
+            listings.append({"site": "TCGplayer", "name": DISPLAY_NAME, "price": "N/A", "url": tcg_url, "status": "Site Error: I tripped! 🤕", "color": 0x95A5A6})
         finally:
             page.close()
 
-        # --- 2. GameNerdz (Direct Product Pages) ---
+        # --- 2. GameNerdz ---
         gn_urls = [
             "https://www.gamenerdz.com/yu-gi-oh-magnificent-monsters-display-1st-edition-preorder",
             "https://www.gamenerdz.com/yu-gi-oh-magnificent-monsters-1st-edition-preorder"
@@ -110,7 +112,7 @@ def check_playwright_sites():
                 response = page.goto(gn_url, timeout=PAGE_TIMEOUT)
                 
                 if response.status == 404:
-                    listings.append({"site": "GameNerdz", "name": DISPLAY_NAME, "price": "N/A", "url": gn_url, "status": "Landing page not public (Hidden/Draft)", "color": 0xE67E22})
+                    listings.append({"site": "GameNerdz", "name": DISPLAY_NAME, "price": "N/A", "url": gn_url, "status": "🙈 Secret Draft Page! (Shh... 🤫)", "color": 0xE67E22})
                 else:
                     page.wait_for_selector(".productView-title", timeout=10000)
                     name = page.locator(".productView-title").inner_text()
@@ -125,15 +127,15 @@ def check_playwright_sites():
                     display_price = f"{price}{evaluate_price(name, price)}"
 
                     if "out of stock" in stock_text or "sold out" in stock_text:
-                        listings.append({"site": "GameNerdz", "name": name, "price": display_price, "url": gn_url, "status": "❌ Out of Stock", "color": 0xE74C3C})
+                        listings.append({"site": "GameNerdz", "name": name, "price": display_price, "url": gn_url, "status": "❌ Out of Stock (Sadge... 🥺)", "color": 0xE74C3C})
                     else:
-                        listings.append({"site": "GameNerdz", "name": name, "price": display_price, "url": gn_url, "status": "✅ IN STOCK", "color": 0x3498DB})
+                        listings.append({"site": "GameNerdz", "name": name, "price": display_price, "url": gn_url, "status": "✅ IN STOCK! (Gotta go fast! 💨)", "color": 0x3498DB})
             except Exception as e:
-                listings.append({"site": "GameNerdz", "name": DISPLAY_NAME, "price": "N/A", "url": gn_url, "status": "❌ Page Not Found / Unreachable", "color": 0x95A5A6})
+                listings.append({"site": "GameNerdz", "name": DISPLAY_NAME, "price": "N/A", "url": gn_url, "status": "❌ Page Not Found (Where did it go?! 🕵️‍♀️)", "color": 0x95A5A6})
             finally:
                 page.close()
 
-        # --- 3. Dave & Adam's (Search Page) ---
+        # --- 3. Dave & Adam's ---
         da_url = "https://www.dacardworld.com/search?term=magnificent+monsters"
         page = browser.new_page()
         Stealth().apply_stealth_sync(page)
@@ -146,7 +148,7 @@ def check_playwright_sites():
                 cards = page.query_selector_all("div.product-card")
                 
                 if not cards:
-                    listings.append({"site": "Dave & Adam's", "name": DISPLAY_NAME, "price": "N/A", "url": da_url, "status": "❌ No data found / Out of Stock", "color": 0xE74C3C})
+                    listings.append({"site": "Dave & Adam's", "name": DISPLAY_NAME, "price": "N/A", "url": da_url, "status": "❌ Out of Stock (Sadge... 🥺)", "color": 0xE74C3C})
                 else:
                     for card in cards[:1]:
                         name = card.locator(".product-title").inner_text().strip()
@@ -154,11 +156,11 @@ def check_playwright_sites():
                         price = price_locator.inner_text() if price_locator.count() > 0 else "N/A"
                         
                         display_price = f"{price}{evaluate_price(name, price)}"
-                        listings.append({"site": "Dave & Adam's", "name": name, "price": display_price, "url": da_url, "status": "✅ IN STOCK", "color": 0x3498DB})
+                        listings.append({"site": "Dave & Adam's", "name": name, "price": display_price, "url": da_url, "status": "✅ IN STOCK! (Gotta go fast! 💨)", "color": 0x3498DB})
             except Exception:
-                listings.append({"site": "Dave & Adam's", "name": DISPLAY_NAME, "price": "N/A", "url": da_url, "status": "❌ No data found (Empty Search)", "color": 0x95A5A6})
+                listings.append({"site": "Dave & Adam's", "name": DISPLAY_NAME, "price": "N/A", "url": da_url, "status": "❌ No data found (Gomenasai... 🙇‍♀️)", "color": 0x95A5A6})
         except Exception:
-            listings.append({"site": "Dave & Adam's", "name": DISPLAY_NAME, "price": "N/A", "url": da_url, "status": "Site Error: Unreachable", "color": 0x95A5A6})
+            listings.append({"site": "Dave & Adam's", "name": DISPLAY_NAME, "price": "N/A", "url": da_url, "status": "Site Error: I tripped! 🤕", "color": 0x95A5A6})
         finally:
             page.close()
             
@@ -192,14 +194,14 @@ def check_shopify_sites():
             try:
                 response = session.get(search_api_url, timeout=12)
                 if response.status_code != 200:
-                    listings.append({"site": store["name"], "name": DISPLAY_NAME, "price": "N/A", "url": base_url, "status": f"Store Error (HTTP {response.status_code})", "color": 0x95A5A6})
+                    listings.append({"site": store["name"], "name": DISPLAY_NAME, "price": "N/A", "url": base_url, "status": f"Store Error (HTTP {response.status_code}) 😵‍💫", "color": 0x95A5A6})
                     continue
                     
                 data = response.json()
                 products = data.get("resources", {}).get("results", {}).get("products", [])
                 
                 if not products:
-                    listings.append({"site": store["name"], "name": DISPLAY_NAME, "price": "N/A", "url": f"{base_url}/search?q=magnificent+monsters", "status": "❌ No data found in store database", "color": 0x95A5A6})
+                    listings.append({"site": store["name"], "name": DISPLAY_NAME, "price": "N/A", "url": f"{base_url}/search?q=magnificent+monsters", "status": "❌ Not in database (They haven't added it yet! 📝)", "color": 0x95A5A6})
                     continue
 
                 for p in products:
@@ -223,14 +225,14 @@ def check_shopify_sites():
                             display_price = f"{price}{price_tag}"
                             
                             if is_available:
-                                listings.append({"site": store["name"], "name": title, "price": display_price, "url": product_url, "status": "✅ IN STOCK", "color": 0x2ECC71})
+                                listings.append({"site": store["name"], "name": title, "price": display_price, "url": product_url, "status": "✅ IN STOCK! (Gotta go fast! 💨)", "color": 0x2ECC71})
                             else:
-                                listings.append({"site": store["name"], "name": title, "price": display_price, "url": product_url, "status": "❌ Out of Stock", "color": 0xE74C3C})
+                                listings.append({"site": store["name"], "name": title, "price": display_price, "url": product_url, "status": "❌ Out of Stock (Sadge... 🥺)", "color": 0xE74C3C})
                         except Exception:
-                            listings.append({"site": store["name"], "name": title, "price": "See Link", "url": f"{base_url}{product_path}", "status": "Status Unknown (Error reading stock)", "color": 0x95A5A6})
+                            listings.append({"site": store["name"], "name": title, "price": "See Link", "url": f"{base_url}{product_path}", "status": "Status Unknown (My scanner broke! 🔧)", "color": 0x95A5A6})
 
             except Exception as e:
-                listings.append({"site": store["name"], "name": "Error", "price": "N/A", "url": base_url, "status": "Failed to search store", "color": 0x95A5A6})
+                listings.append({"site": store["name"], "name": "Error", "price": "N/A", "url": base_url, "status": "Failed to search store 😵‍💫", "color": 0x95A5A6})
                 
     return listings
 
@@ -244,21 +246,31 @@ def send_radar_report(all_listings):
     for L in all_listings:
         embeds.append({
             "title": f"[{L['site']}] {L['name']}",
-            "description": f"**Price:** {L['price']}\n**Status:** {L['status']}\n**Link:** [Click Here to View]({L['url']})",
-            "color": L['color']
+            "description": f"**Price:** {L['price']}\n**Status:** {L['status']}\n**Link:** [Click Here to View, Senpai!]({L['url']})",
+            "color": L['color'],
+            "footer": {
+                "text": "Scouting the web just for you! (◕‿◕✿)"
+            }
         })
 
     for i in range(0, len(embeds), 10):
         chunk = embeds[i:i+10]
-        header = "📊 **System Radar Report**" if i == 0 else ""
+        header = "✨ **Notice me, Senpai! Here is your latest Market Radar!** ✨" if i == 0 else ""
+        
+        payload = {
+            "username": BOT_NAME,
+            "avatar_url": BOT_AVATAR,
+            "content": header,
+            "embeds": chunk
+        }
         
         try:
-            requests.post(DISCORD_WEBHOOK_URL, json={"content": header, "embeds": chunk})
+            requests.post(DISCORD_WEBHOOK_URL, json=payload)
         except Exception as e:
             log.error(f"Discord send failed: {e}")
 
 def main():
-    log.info("Generating full radar report...")
+    log.info("Generating full anime radar report...")
     all_results = []
     
     all_results.extend(check_playwright_sites())

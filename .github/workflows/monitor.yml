@@ -1,11 +1,10 @@
 name: Magnificent Monsters Monitor
 
 on:
-  schedule:
-    - cron: '*/10 * * * *'
+  repository_dispatch:
+    types: [trigger-monitor]
   workflow_dispatch:
 
-# This silences that yellow Node.js 20 warning!
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 

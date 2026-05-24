@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
 Magnificent Monsters Monitor - Anime Girl Edition (Monitor-chan 🌸)
-Reports exact statuses with a cute, weeb-friendly aesthetic.
+Tracks constant changes, saves state to prevent spam, and alerts on restocks!
 """
 
 import os
 import re
+import json
 import logging
 import requests
 from curl_cffi.requests import Session
@@ -14,8 +15,9 @@ from playwright_stealth import Stealth
 
 # ====================== CONFIG ======================
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
-PAGE_TIMEOUT = 25000
+PAGE_TIMEOUT = 30000
 PAGE_SETTLE_MS = 3000
+STATE_FILE = "state.json"
 
 KEYWORD = "magnificent monsters"
 DISPLAY_NAME = "Magnificent Monsters"
@@ -27,6 +29,26 @@ BOT_AVATAR = "https://i.pinimg.com/originals/a4/0f/58/a40f589cda683eab5dc422d3d0
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s")
 log = logging.getLogger(__name__)
 
+# ====================== STATE MANAGEMENT ======================
+def load_state():
+    """Loads the previous inventory state from disk."""
+    if os.path.exists(STATE_FILE):
+        try:
+            with open(STATE_FILE, "r") as f:
+                return json.load(f)
+        except Exception as e:
+            log.error(f"Failed to load state: {e}")
+    return {}
+
+def save_state(state):
+    """Saves the current inventory state to disk."""
+    try:
+        with open(STATE_FILE, "w") as f:
+            json.dump(state, f, indent=4)
+    except Exception as e:
+        log.error(f"Failed to save state: {e}")
+
+# ====================== LOGIC ======================
 def evaluate_price(name, price_str):
     """Evaluates the item price with an anime-themed markup system."""
     if not price_str or price_str == "N/A" or "See Link" in price_str: 
@@ -61,11 +83,18 @@ def check_playwright_sites():
     listings = []
     
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        # Added extra stealth arguments
+        browser = p.chromium.launch(
+            headless=True, 
+            args=["--disable-blink-features=AutomationControlled"]
+        )
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
         
         # --- 1. TCGPlayer ---
         tcg_url = "https://www.tcgplayer.com/search/yugioh/magnificent-monsters?productLineName=yugioh&setName=magnificent-monsters&page=1&view=grid"
-        page = browser.new_page()
+        page = context.new_page()
         Stealth().apply_stealth_sync(page)
         try:
             log.info("Scanning Playwright site: TCGplayer")
@@ -92,9 +121,9 @@ def check_playwright_sites():
                             display_price = f"{price}{evaluate_price(name, price)}"
                             listings.append({"site": "TCGplayer", "name": name, "price": display_price, "url": tcg_url, "status": "✅ IN STOCK! (Gotta go fast! 💨)", "color": 0x3498DB})
                 except Exception:
-                    listings.append({"site": "TCGplayer", "name": DISPLAY_NAME, "price": "N/A", "url": tcg_url, "status": "❌ No data found (Gomenasai... 🙇‍♀️)", "color": 0x95A5A6})
+                    listings.append({"site": "TCGplayer", "name": DISPLAY_NAME, "price": "N/A", "url": tcg_url, "status": "❌ Out of Stock (Sadge... 🥺)", "color": 0xE74C3C})
         except Exception as e:
-            listings.append({"site": "TCGplayer", "name": DISPLAY_NAME, "price": "N/A", "url": tcg_url, "status": "Site Error: I tripped! 🤕", "color": 0x95A5A6})
+            log.error(f"TCGPlayer Error: {e}")
         finally:
             page.close()
 
@@ -105,10 +134,10 @@ def check_playwright_sites():
         ]
         
         for gn_url in gn_urls:
-            page = browser.new_page()
+            page = context.new_page()
             Stealth().apply_stealth_sync(page)
             try:
-                log.info(f"Scanning Playwright site: GameNerdz direct link")
+                log.info("Scanning Playwright site: GameNerdz direct link")
                 response = page.goto(gn_url, timeout=PAGE_TIMEOUT)
                 
                 if response.status == 404:
@@ -131,13 +160,13 @@ def check_playwright_sites():
                     else:
                         listings.append({"site": "GameNerdz", "name": name, "price": display_price, "url": gn_url, "status": "✅ IN STOCK! (Gotta go fast! 💨)", "color": 0x3498DB})
             except Exception as e:
-                listings.append({"site": "GameNerdz", "name": DISPLAY_NAME, "price": "N/A", "url": gn_url, "status": "❌ Page Not Found (Where did it go?! 🕵️‍♀️)", "color": 0x95A5A6})
+                log.error(f"GameNerdz Error: {e}")
             finally:
                 page.close()
 
         # --- 3. Dave & Adam's ---
         da_url = "https://www.dacardworld.com/search?term=magnificent+monsters"
-        page = browser.new_page()
+        page = context.new_page()
         Stealth().apply_stealth_sync(page)
         try:
             log.info("Scanning Playwright site: Dave & Adam's")
@@ -158,9 +187,9 @@ def check_playwright_sites():
                         display_price = f"{price}{evaluate_price(name, price)}"
                         listings.append({"site": "Dave & Adam's", "name": name, "price": display_price, "url": da_url, "status": "✅ IN STOCK! (Gotta go fast! 💨)", "color": 0x3498DB})
             except Exception:
-                listings.append({"site": "Dave & Adam's", "name": DISPLAY_NAME, "price": "N/A", "url": da_url, "status": "❌ No data found (Gomenasai... 🙇‍♀️)", "color": 0x95A5A6})
-        except Exception:
-            listings.append({"site": "Dave & Adam's", "name": DISPLAY_NAME, "price": "N/A", "url": da_url, "status": "Site Error: I tripped! 🤕", "color": 0x95A5A6})
+                listings.append({"site": "Dave & Adam's", "name": DISPLAY_NAME, "price": "N/A", "url": da_url, "status": "❌ Out of Stock (Sadge... 🥺)", "color": 0xE74C3C})
+        except Exception as e:
+            log.error(f"DA Card World Error: {e}")
         finally:
             page.close()
             
@@ -176,25 +205,15 @@ def check_shopify_sites():
         {"name": "CoreTCG", "url": "https://www.coretcg.com"}
     ]
     
-    with Session() as session:
-        session.headers.update({
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-            "Sec-Ch-Ua-Mobile": "?0",
-            "Sec-Ch-Ua-Platform": '"Windows"',
-        })
-
+    with Session(impersonate="chrome120") as session:
         for store in shopify_stores:
-            log.info(f"Scanning Shopify site via Search API: {store['name']}")
+            log.info(f"Scanning Shopify site: {store['name']}")
             base_url = store["url"].rstrip('/')
-            
             search_api_url = f"{base_url}/search/suggest.json?q=magnificent+monsters&resources[type]=product"
             
             try:
                 response = session.get(search_api_url, timeout=12)
                 if response.status_code != 200:
-                    listings.append({"site": store["name"], "name": DISPLAY_NAME, "price": "N/A", "url": base_url, "status": f"Store Error (HTTP {response.status_code}) 😵‍💫", "color": 0x95A5A6})
                     continue
                     
                 data = response.json()
@@ -229,38 +248,80 @@ def check_shopify_sites():
                             else:
                                 listings.append({"site": store["name"], "name": title, "price": display_price, "url": product_url, "status": "❌ Out of Stock (Sadge... 🥺)", "color": 0xE74C3C})
                         except Exception:
-                            listings.append({"site": store["name"], "name": title, "price": "See Link", "url": f"{base_url}{product_path}", "status": "Status Unknown (My scanner broke! 🔧)", "color": 0x95A5A6})
-
+                            pass
             except Exception as e:
-                listings.append({"site": store["name"], "name": "Error", "price": "N/A", "url": base_url, "status": "Failed to search store 😵‍💫", "color": 0x95A5A6})
+                log.error(f"Shopify Error for {store['name']}: {e}")
                 
     return listings
 
-def send_radar_report(all_listings):
-    """Chunks all statuses into highly detailed Discord Embeds and sends them."""
+def analyze_changes_and_notify(all_listings):
+    """Compares current listings with previous state. Only alerts on changes to prevent spam."""
     if not DISCORD_WEBHOOK_URL:
         log.error("Missing Webhook URL!")
         return
 
-    embeds = []
-    for L in all_listings:
-        embeds.append({
-            "title": f"[{L['site']}] {L['name']}",
-            "description": f"**Price:** {L['price']}\n**Status:** {L['status']}\n**Link:** [Click Here to View, Senpai!]({L['url']})",
-            "color": L['color'],
-            "footer": {
-                "text": "Scouting the web just for you! (◕‿◕✿)"
-            }
-        })
+    old_state = load_state()
+    new_state = {}
+    embeds_to_send = []
+    ping_message = ""
 
-    for i in range(0, len(embeds), 10):
-        chunk = embeds[i:i+10]
-        header = "✨ **Notice me, Senpai! Here is your latest Market Radar!** ✨" if i == 0 else ""
+    for L in all_listings:
+        # Create a unique ID for this item to track it in our state dictionary
+        item_id = f"{L['site']}::{L['name']}::{L['url']}"
+        is_in_stock = "✅ IN STOCK" in L['status']
+        
+        # Save current state for the next run
+        new_state[item_id] = {
+            "status": L['status'],
+            "price": L['price'],
+            "in_stock": is_in_stock
+        }
+
+        # Determine if we should notify Discord
+        should_notify = False
+        old_data = old_state.get(item_id)
+
+        if not old_data:
+            # It's a completely new listing we've never seen before!
+            should_notify = True
+            if is_in_stock:
+                ping_message = "@everyone 🚨 SENPAI! A NEW PRE-ORDER JUST DROPPED! 🚨"
+        else:
+            # Check if the stock status or price changed since 10 minutes ago
+            status_changed = old_data['in_stock'] != is_in_stock
+            price_changed = old_data['price'] != L['price']
+
+            if status_changed or price_changed:
+                should_notify = True
+                if is_in_stock and not old_data['in_stock']:
+                    ping_message = "@everyone 🌸 SENPAI! RESTOCK DETECTED! 🌸"
+
+        if should_notify:
+            embeds_to_send.append({
+                "title": f"[{L['site']}] {L['name']}",
+                "description": f"**Price:** {L['price']}\n**Status:** {L['status']}\n**Link:** [Click Here to View, Senpai!]({L['url']})",
+                "color": L['color'],
+                "footer": {
+                    "text": "Scouting the web just for you! (◕‿◕✿)"
+                }
+            })
+
+    # Save the new state over the old one
+    save_state(new_state)
+
+    # If nothing changed, we stay quiet to prevent spam!
+    if not embeds_to_send:
+        log.info("No changes detected. Keeping quiet to avoid spamming Senpai.")
+        return
+
+    # Send the webhooks in chunks of 10
+    for i in range(0, len(embeds_to_send), 10):
+        chunk = embeds_to_send[i:i+10]
         
         payload = {
             "username": BOT_NAME,
             "avatar_url": BOT_AVATAR,
-            "content": header,
+            "content": ping_message if (i == 0 and ping_message) else "✨ **Market Radar Update!** ✨",
             "embeds": chunk
         }
         
@@ -276,8 +337,8 @@ def main():
     all_results.extend(check_playwright_sites())
     all_results.extend(check_shopify_sites())
     
-    send_radar_report(all_results)
-    log.info("Radar report sent to Discord.")
+    analyze_changes_and_notify(all_results)
+    log.info("Radar report evaluation complete.")
 
 if __name__ == "__main__":
     main()

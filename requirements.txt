@@ -1,0 +1,5 @@
+curl_cffi
+requests
+playwright
+playwright-stealth
+supabase

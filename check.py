@@ -13,6 +13,11 @@ log = logging.getLogger(__name__)
 SUPABASE = create_client(os.environ.get("SUPABASE_URL", ""), os.environ.get("SUPABASE_KEY", ""))
 DISCORD_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
 
+# Load Proxy Secrets (if you decide to use them)
+PROXY_SERVER = os.environ.get("PROXY_SERVER")
+PROXY_USER = os.environ.get("PROXY_USER")
+PROXY_PASS = os.environ.get("PROXY_PASS")
+
 # ================= Discord Helper =================
 def send_to_discord(text_content):
     if not DISCORD_URL or not text_content: return
@@ -30,13 +35,19 @@ def send_to_discord(text_content):
 # ================= Scraper 1: Playwright (Direct URLs) =================
 def check_playwright_sites():
     results = []
+    proxy_config = None
+    
+    if PROXY_SERVER and PROXY_USER and PROXY_PASS:
+        server_url = PROXY_SERVER if PROXY_SERVER.startswith("http") else f"http://{PROXY_SERVER}"
+        proxy_config = {"server": server_url, "username": PROXY_USER, "password": PROXY_PASS}
+
     targets = [
         {"site": "GameNerdz", "name": "Magnificent Monsters Display", "url": "https://www.gamenerdz.com/yu-gi-oh-magnificent-monsters-display-1st-edition-preorder", "price_selector": ".price.price--withoutTax"},
         {"site": "Dave & Adams", "name": "Magnificent Monsters Booster Box", "url": "https://www.dacardworld.com/gaming/yu-gi-oh-magnificent-monsters-booster-box", "price_selector": ".price"}
     ]
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(headless=True, proxy=proxy_config)
         context = browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         page = context.new_page()
         Stealth().apply_stealth_sync(page)
@@ -62,6 +73,16 @@ def check_playwright_sites():
 # ================= Scraper 2: Shopify APIs =================
 def check_shopify_sites():
     results = []
+    
+    # Request proxy formatting (if you decide to use them)
+    req_proxies = None
+    if PROXY_SERVER and PROXY_USER and PROXY_PASS:
+        clean_server = PROXY_SERVER.replace('http://', '').replace('https://', '')
+        req_proxies = {
+            "http": f"http://{PROXY_USER}:{PROXY_PASS}@{clean_server}",
+            "https": f"http://{PROXY_USER}:{PROXY_PASS}@{clean_server}"
+        }
+
     stores = [
         {"name": "Forge and Fire", "url": "https://forgeandfiregaming.com"},
         {"name": "CoreTCG", "url": "https://www.coretcg.com"},
@@ -76,7 +97,7 @@ def check_shopify_sites():
         try:
             log.info(f"Checking {store['name']}...")
             api_url = f"{store['url']}/search/suggest.json?q=magnificent+monsters+box&resources[type]=product"
-            data = requests.get(api_url, timeout=10).json()
+            data = requests.get(api_url, timeout=10, proxies=req_proxies).json()
             products = data.get("resources", {}).get("results", {}).get("products", [])
             
             if not products:
@@ -106,7 +127,7 @@ def main():
     all_results = check_playwright_sites() + check_shopify_sites()
     
     if not all_results:
-        log.error("Scrapers returned no data.")
+        log.error("Scrapers returned no data. Ending run.")
         return
 
     # Fetch Old State to track explicit changes
@@ -114,7 +135,7 @@ def main():
     new_state = []
     
     # Header for the 10-minute block update
-    message_lines = ["⏳ **10-MINUTE SYSTEM UPDATE**", "```"]
+    message_lines = ["⏳ **10-MINUTE SYSTEM UPDATE**\n"]
     instant_alerts = []
 
     for L in all_results:
@@ -124,25 +145,33 @@ def main():
         old_data = old_state.get(item_id)
         has_changed = not old_data or old_data['status'] != L['status'] or old_data['price'] != L['price']
         
-        # Build the exact line structure requested
-        if has_changed:
-            line = f"{L['site']} | {L['name']} ({L['status']}) | {L['price']} | {L['url']}"
-            # If it transitions specifically into a purchase window, prepare an instant notification header
-            if L['status'] == "LIVE":
-                instant_alerts.append(f"🚨 **PRE-ORDER LIVE AT {L['site'].upper()}** 🚨\nLink: {L['url']}")
+        # Select an emoji based on status
+        if "LIVE" in L['status']:
+            status_emoji = "🟢"
+        elif "Sold Out" in L['status']:
+            status_emoji = "🔴"
+        elif "Error" in L['status'] or "Down" in L['status'] or "Blocked" in L['status']:
+            status_emoji = "⚠️"
         else:
-            line = f"{L['site']} | no update | {L['url']}"
+            status_emoji = "⚪" # No Listing
             
+        # If it changes to LIVE, add an emergency ping
+        if has_changed and L['status'] == "LIVE":
+            instant_alerts.append(f"🚨 **PRE-ORDER LIVE AT {L['site'].upper()}** 🚨\nLink: {L['url']}")
+            
+        # The <URL> syntax prevents Discord from auto-generating massive preview images
+        line = f"**{L['site']}** — {L['price']}\n{status_emoji} *{L['status']}* | [View Listing](<{L['url']}>)"
         message_lines.append(line)
 
-    message_lines.append("```")
-    final_report = "\n".join(message_lines)
+    # Join the lines with a double newline for clean vertical spacing
+    final_report = "\n\n".join(message_lines)
 
     # Save to Supabase
     if new_state:
         SUPABASE.table("inventory_state").upsert(new_state).execute()
+        log.info(f"Saved {len(new_state)} items to database.")
 
-    # If any store instantly went live, put those tags at the very top of the delivery box
+    # If any store instantly went live, push the bold alert to the very top of the message
     if instant_alerts:
         alert_header = "\n".join(instant_alerts)
         final_report = f"{alert_header}\n\n{final_report}"

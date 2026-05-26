@@ -13,22 +13,20 @@ log = logging.getLogger(__name__)
 SUPABASE = create_client(os.environ.get("SUPABASE_URL", ""), os.environ.get("SUPABASE_KEY", ""))
 DISCORD_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
 
-# Load Proxy Secrets (if you decide to use them)
+# Load Proxy Secrets (if used)
 PROXY_SERVER = os.environ.get("PROXY_SERVER")
 PROXY_USER = os.environ.get("PROXY_USER")
 PROXY_PASS = os.environ.get("PROXY_PASS")
 
 # ================= Discord Helper =================
-def send_to_discord(text_content):
-    if not DISCORD_URL or not text_content: return
+def send_to_discord(embeds):
+    if not DISCORD_URL or not embeds: return
     try:
-        # Split message if it exceeds Discord's 2000 character limit
-        if len(text_content) > 1900:
-            chunks = [text_content[i:i+1900] for i in range(0, len(text_content), 1900)]
-            for chunk in chunks:
-                requests.post(DISCORD_URL, json={"content": chunk})
-        else:
-            requests.post(DISCORD_URL, json={"content": text_content})
+        # Discord limits us to 10 embeds per message
+        for i in range(0, len(embeds), 10):
+            response = requests.post(DISCORD_URL, json={"embeds": embeds[i:i+10]})
+            if response.status_code >= 400:
+                log.error(f"Discord API Error: {response.text}")
     except Exception as e:
         log.error(f"Discord Webhook Error: {e}")
 
@@ -74,7 +72,6 @@ def check_playwright_sites():
 def check_shopify_sites():
     results = []
     
-    # Request proxy formatting (if you decide to use them)
     req_proxies = None
     if PROXY_SERVER and PROXY_USER and PROXY_PASS:
         clean_server = PROXY_SERVER.replace('http://', '').replace('https://', '')
@@ -88,7 +85,7 @@ def check_shopify_sites():
         {"name": "CoreTCG", "url": "https://www.coretcg.com"},
         {"name": "Gamers Choice", "url": "https://www.gamerschoice.com"},
         {"name": "Prodigy Games", "url": "https://prodigygames.com"},
-        {"name": "Smoke & Mirrors Hobby", "url": "https://smokeandmirrorshobby.com"},
+        {"name": "Smoke & Mirrors", "url": "https://smokeandmirrorshobby.com"},
         {"name": "Ideal808", "url": "https://www.ideal808.com"},
         {"name": "YGO Black Market", "url": "https://ygoblackmarket.com"}
     ]
@@ -134,9 +131,8 @@ def main():
     old_state = {r['id']: r for r in SUPABASE.table("inventory_state").select("*").execute().data}
     new_state = []
     
-    # Header for the 10-minute block update
-    message_lines = ["⏳ **10-MINUTE SYSTEM UPDATE**\n"]
-    instant_alerts = []
+    embeds = []
+    status_fields = []
 
     for L in all_results:
         item_id = f"{L['site']}::{L['url']}"
@@ -145,39 +141,39 @@ def main():
         old_data = old_state.get(item_id)
         has_changed = not old_data or old_data['status'] != L['status'] or old_data['price'] != L['price']
         
-        # Select an emoji based on status
-        if "LIVE" in L['status']:
-            status_emoji = "🟢"
-        elif "Sold Out" in L['status']:
-            status_emoji = "🔴"
-        elif "Error" in L['status'] or "Down" in L['status'] or "Blocked" in L['status']:
-            status_emoji = "⚠️"
-        else:
-            status_emoji = "⚪" # No Listing
-            
-        # If it changes to LIVE, add an emergency ping
+        # 1. Check for Emergency LIVE Alerts
         if has_changed and L['status'] == "LIVE":
-            instant_alerts.append(f"🚨 **PRE-ORDER LIVE AT {L['site'].upper()}** 🚨\nLink: {L['url']}")
+            embeds.append({
+                "title": f"🚨 PRE-ORDER LIVE: {L['site'].upper()} 🚨",
+                "description": f"**{L['name']}**\n\n**Price:** {L['price']}\n\n👉 **[CLICK HERE TO BUY NOW]({L['url']})**",
+                "color": 0x00FF00 # Bright Green
+            })
             
-        # The <URL> syntax prevents Discord from auto-generating massive preview images
-        line = f"**{L['site']}** — {L['price']}\n{status_emoji} *{L['status']}* | [View Listing](<{L['url']}>)"
-        message_lines.append(line)
+        # 2. Build the Dashboard Grid
+        emoji = "🟢" if L['status'] == "LIVE" else "🔴" if L['status'] == "Sold Out" else "⚪" if L['status'] == "No Listing" else "⚠️"
+        
+        status_fields.append({
+            "name": L['site'],
+            "value": f"{emoji} {L['status']}\n{L['price']}\n[Link](<{L['url']}>)",
+            "inline": True # This forces Discord to arrange them in a neat grid!
+        })
 
-    # Join the lines with a double newline for clean vertical spacing
-    final_report = "\n\n".join(message_lines)
+    # 3. Create the Main 10-Minute Dashboard Embed
+    embeds.append({
+        "title": "⏳ 10-Minute System Update",
+        "description": "Current retail status for Magnificent Monsters:",
+        "color": 0x2b2d31, # This is Discord's exact background color, making the panel look incredibly sleek
+        "fields": status_fields,
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
+    })
 
     # Save to Supabase
     if new_state:
         SUPABASE.table("inventory_state").upsert(new_state).execute()
         log.info(f"Saved {len(new_state)} items to database.")
 
-    # If any store instantly went live, push the bold alert to the very top of the message
-    if instant_alerts:
-        alert_header = "\n".join(instant_alerts)
-        final_report = f"{alert_header}\n\n{final_report}"
-
     # Broadcast to Discord
-    send_to_discord(final_report)
+    send_to_discord(embeds)
     log.info("Sweep execution complete.")
 
 if __name__ == "__main__":

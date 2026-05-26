@@ -1,7 +1,7 @@
 name: TCG Radar Monitor
 on:
-  schedule:
-    - cron: '*/10 * * * *'
+  repository_dispatch:
+    types: [force-run]
   workflow_dispatch:
 
 jobs:
@@ -12,6 +12,9 @@ jobs:
       DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      PROXY_SERVER: ${{ secrets.PROXY_SERVER }}
+      PROXY_USER: ${{ secrets.PROXY_USER }}
+      PROXY_PASS: ${{ secrets.PROXY_PASS }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

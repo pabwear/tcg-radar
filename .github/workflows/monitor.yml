@@ -1,25 +1,35 @@
 name: TCG Radar Monitor
+
 on:
+  schedule:
+    - cron: '*/10 * * * *'      # Every 10 minutes (UTC)
   repository_dispatch:
     types: [force-run]
   workflow_dispatch:
+
+concurrency:
+  group: tcg-radar-monitor
+  cancel-in-progress: true
 
 jobs:
   monitor:
     runs-on: ubuntu-latest
     env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-      PROXY_SERVER: ${{ secrets.PROXY_SERVER }}
-      PROXY_USER: ${{ secrets.PROXY_USER }}
-      PROXY_PASS: ${{ secrets.PROXY_PASS }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: {python-version: '3.12'}
-      - run: |
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
           pip install -r requirements.txt
           playwright install --with-deps chromium
-      - run: python check.py
+
+      - name: Run TCG Radar
+        run: python check.py
